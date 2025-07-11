@@ -19,6 +19,18 @@
   }
 }
 
+/* app/globals.css */
+
+/* 1. Las capas de Tailwind */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 2. Tus overrides */
+.btn-primary {
+  @apply bg-blue-600 border-blue-700 text-white;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
