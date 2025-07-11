@@ -11,13 +11,10 @@ export async function generateStaticParams() {
   }))
 }
 
-// NO defines un tipo separado llamado PageProps
-// NO uses genéricos <PageProps>
 export default async function Page({ params }: { params: { slug: string } }) {
-  const { slug } = params
-  const filePath = path.join(process.cwd(), 'assets', `${slug}.json`)
+  const filePath = path.join(process.cwd(), 'assets', `${params.slug}.json`)
   const raw = await fs.readFile(filePath, 'utf8')
   const examen = JSON.parse(raw)
 
-  return <ExamClient examen={examen} slug={slug} />
+  return <ExamClient examen={examen} slug={params.slug} />
 }
