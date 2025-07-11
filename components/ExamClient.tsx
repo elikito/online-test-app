@@ -27,16 +27,18 @@ interface ExamClientProps {
 
 export default function ExamClient({ examen, slug }: ExamClientProps) {
   const storageKey = `examProgress_${slug}`
+  const questionTime = 30  // segundos por pregunta
 
-  // Estados principales
+  // Estados
   const [order, setOrder]             = useState<number[] | null>(null)
   const [pointer, setPointer]         = useState(0)
   const [correctCount, setCorrect]    = useState(0)
   const [incorrectCount, setIncorrect]= useState(0)
   const [answered, setAnswered]       = useState(false)
   const [feedback, setFeedback]       = useState<string | null>(null)
+  const [timeLeft, setTimeLeft]       = useState(questionTime)
 
-  // 1) Al montar, leer LocalStorage o inicializar
+  // 1) Cargar o inicializar progreso y orden barajado
   useEffect(() => {
     const saved = typeof window !== 'undefined'
       ? localStorage.getItem(storageKey)
@@ -49,14 +51,12 @@ export default function ExamClient({ examen, slug }: ExamClientProps) {
       setCorrect(correctCount)
       setIncorrect(incorrectCount)
     } else {
-      // Generar orden aleatorio (Fisher–Yates)
       const indices = examen.preguntas.map((_, i) => i)
       for (let i = indices.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1))
         ;[indices[i], indices[j]] = [indices[j], indices[i]]
       }
       setOrder(indices)
-      // Guardar estado inicial
       localStorage.setItem(
         storageKey,
         JSON.stringify({ order: indices, pointer: 0, correctCount: 0, incorrectCount: 0 })
@@ -64,7 +64,7 @@ export default function ExamClient({ examen, slug }: ExamClientProps) {
     }
   }, [examen.preguntas, storageKey])
 
-  // 2) Cada vez que cambie el progreso, actualizar LocalStorage
+  // 2) Persistir en localStorage al cambiar progreso
   useEffect(() => {
     if (!order) return
     localStorage.setItem(
@@ -73,16 +73,46 @@ export default function ExamClient({ examen, slug }: ExamClientProps) {
     )
   }, [order, pointer, correctCount, incorrectCount, storageKey])
 
-  // Mientras cargamos el order, mostramos un loading
+  // 3) Reset de temporizador al cambiar de pregunta
+  useEffect(() => {
+    setTimeLeft(questionTime)
+    setAnswered(false)
+    setFeedback(null)
+  }, [pointer])
+
+  // 4) Cuenta atrás y timeout
+  useEffect(() => {
+    if (!order || answered) return
+
+    if (timeLeft <= 0) {
+      // tiempo agotado → tratar como incorrecto y avanzar
+      setFeedback('Tiempo agotado')
+      setIncorrect(i => i + 1)
+      setAnswered(true)
+      setTimeout(() => {
+        setPointer(p => p + 1)
+      }, 1500)
+      return
+    }
+
+    const timerId = setTimeout(() => {
+      setTimeLeft(t => t - 1)
+    }, 1000)
+
+    return () => clearTimeout(timerId)
+  }, [timeLeft, answered, order])
+
   if (!order) {
     return <div>Cargando examen…</div>
   }
 
-  // Determinar pregunta actual
+  const total    = order.length
+  const answeredCount = correctCount + incorrectCount
+  const progressPct   = Math.round((answeredCount / total) * 100)
+
+  // Pregunta actual
   const currentIndex   = order[pointer]
   const preguntaActual = examen.preguntas[currentIndex]
-
-  // Convertir opciones objeto→array
   const opcionesArray: Opcion[] = Object.entries(preguntaActual.opciones).map(
     ([clave, texto]) => ({
       clave,
@@ -91,7 +121,7 @@ export default function ExamClient({ examen, slug }: ExamClientProps) {
     })
   )
 
-  // Responder pregunta
+  // Al responder manual
   function handleAnswer(isCorrect: boolean) {
     if (answered) return
     setAnswered(true)
@@ -102,40 +132,40 @@ export default function ExamClient({ examen, slug }: ExamClientProps) {
       setFeedback('Incorrecto')
       setIncorrect(i => i + 1)
     }
-  }
-
-  // Navegación
-  function goNext() {
-    if (pointer < order.length - 1) {
+    // avanza tras mostrar feedback
+    setTimeout(() => {
       setPointer(p => p + 1)
-      resetAnswerState()
-    }
-  }
-  function goPrev() {
-    if (pointer > 0) {
-      setPointer(p => p - 1)
-      resetAnswerState()
-    }
-  }
-  function resetAnswerState() {
-    setAnswered(false)
-    setFeedback(null)
+    }, 800)
   }
 
-  // Si acabas todas las preguntas…
-  if (pointer >= order.length) {
+  // Fin del examen
+  if (pointer >= total) {
     return (
-      <div>
-        <h2 className="text-2xl">Examen completado</h2>
-        <p>✅ Correctas: {correctCount} / {order.length}</p>
-        <p>❌ Incorrectas: {incorrectCount} / {order.length}</p>
+      <div className="text-center">
+        <h2 className="text-2xl mb-4">Examen completado</h2>
+        <p>✅ Correctas: {correctCount} / {total}</p>
+        <p>❌ Incorrectas: {incorrectCount} / {total}</p>
       </div>
     )
   }
 
-  // Render del quiz
   return (
     <div className="max-w-xl mx-auto">
+
+      {/* Barra de progreso examen */}
+      <div className="w-full bg-gray-200 h-2 rounded-full mb-4 overflow-hidden">
+        <div
+          className="h-full bg-blue-600 transition-all"
+          style={{ width: `${progressPct}%` }}
+        />
+      </div>
+      <p className="text-right text-sm text-gray-600 mb-4">{progressPct}% completado</p>
+
+      {/* Temporizador */}
+      <div className="mb-4 text-right text-lg font-mono">
+        ⏱ {timeLeft}s
+      </div>
+
       {/* Contadores */}
       <div className="flex justify-between mb-4 text-lg">
         <span>✅ {correctCount}</span>
@@ -145,7 +175,7 @@ export default function ExamClient({ examen, slug }: ExamClientProps) {
       {/* Título e ID */}
       <h3 className="text-2xl font-semibold mb-1">{examen.nombre}</h3>
       <p className="text-sm text-gray-600 mb-4">
-        Pregunta #{preguntaActual.id} — {pointer + 1} / {order.length}
+        Pregunta #{preguntaActual.id} — {pointer + 1} / {total}
       </p>
 
       {/* Enunciado */}
@@ -181,18 +211,18 @@ export default function ExamClient({ examen, slug }: ExamClientProps) {
         </div>
       )}
 
-      {/* Botones de navegación */}
+      {/* Navegación manual */}
       <div className="flex justify-between mt-6">
         <button
-          onClick={goPrev}
+          onClick={() => setPointer(p => Math.max(0, p - 1))}
           disabled={pointer === 0}
           className="px-4 py-2 bg-gray-200 rounded disabled:opacity-50"
         >
           Anterior
         </button>
         <button
-          onClick={goNext}
-          disabled={pointer >= order.length - 1}
+          onClick={() => setPointer(p => Math.min(total, p + 1))}
+          disabled={pointer >= total - 1}
           className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
         >
           Siguiente
@@ -201,3 +231,5 @@ export default function ExamClient({ examen, slug }: ExamClientProps) {
     </div>
   )
 }
+
+

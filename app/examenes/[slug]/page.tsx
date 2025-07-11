@@ -8,10 +8,14 @@ export async function generateStaticParams() {
   return files.map(f => ({ slug: f.replace('.json', '') }))
 }
 
-export default async function Page({ params }: { params: { slug: string } }) {
+type PageProps = {
+  params: { slug: string }
+}
+
+export default async function Page({ params }: PageProps) {
   const filePath = path.join(process.cwd(), 'assets', `${params.slug}.json`)
-  const raw = await fs.readFile(filePath, 'utf8')
-  const examen = JSON.parse(raw)
+  const raw      = await fs.readFile(filePath, 'utf8')
+  const examen   = JSON.parse(raw)
 
   return <ExamClient examen={examen} slug={params.slug} />
 }
